@@ -1,0 +1,308 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title id="document-title">Info. reader</title>
+  <link rel="icon" href="data:,">
+  <style type="text/css">
+body { background: #111; font-family: sans-serif; color: white; overflow: hidden; }
+.show-overflow { overflow: visible; }
+#date { font-size: 80%; margin-left: 2em; }
+.both-side-parent { display: flex; justify-content: space-between; }
+#outer {}
+#list-outer { height: 99vh; margin-left: 1em; }
+#list { width: 450px; height: calc(100% - 4em); font-size: 80%; margin-right: 3em; overflow-y: auto; padding-right: 0.5em; }
+.entry { cursor: default; }
+.clicked { color: #BBF; }
+.date { font-size: 80%; }
+#title { font-size: 120%; }
+#data { width: calc(100% - 450px - 4em); height: 99vh; overflow-y: auto; }
+#content { width: calc(100% - 0.5em); padding-right: 0.5em; }
+#category { height: 1.5em; }
+#category div { margin-left: 1em; margin-right: 1em; }
+.hidden { display: none; }
+.more div { margin-left: 1em; margin-right: 1em; cursor: default; }
+  </style>
+</head>
+<body id="body">
+<script type="text/javascript">
+class ListLoader {
+  constructor(type) {
+    this.base = "https://gf2-web-preregister-api.sunborngame.com/website/news_list/" + type;
+    this.dataBase = "https://gf2-web-preregister-api.sunborngame.com/website/news/";
+    this.total = 0;
+    this.loadedCount = 0;
+    this.page = 1;
+  }
+
+  hasMore() {
+    return this.loadedCount < this.total;
+  }
+
+  async loadNext() {
+    const param = `?page=${this.page}&limit=100`;
+    this.page += 1;
+    const target = this.base + param;
+    return await this.fetch(target);
+  }
+
+  // Content, Date, GlobalTop, Id, Marks, Site, Title, Type
+  async fetch(target) {
+    const options = { method: 'GET' };
+    const req = new Request(target, options);
+    const response = await window.fetch(req);
+    if (!response.ok) {
+      console.log("no response");
+      return false;
+    } else {
+      const j = await response.json();
+      if (j.code == 0) {
+        const data = j.data;
+        this.total = data.total;
+        this.loadedCount += data.list.length;
+        return data.list;
+      } else {
+        return false;
+      }
+    }
+  }
+
+  async fetchSingle(id) {
+    const target = this.dataBase + id;
+    const options = { method: 'GET' };
+    const req = new Request(target, options);
+    const response = await window.fetch(req);
+    if (!response.ok) {
+      console.log("no response");
+      return false;
+    } else {
+      const j = await response.json();
+      if (j.code == 0) {
+        return j.data;
+      } else {
+        return false;
+      }
+    }
+  }
+}
+
+async function listMore() {
+  const list = document.getElementById('list');
+  if (list.lastElementChild && list.lastElementChild.classList.contains('more')) {
+    list.removeChild(list.lastElementChild);
+  }
+
+  const data = await loader.loadNext();
+  addToList(data);
+
+  if (loader.hasMore()) {
+    const outer = addElement(list, 'div');
+    outer.style = 'display: flex;';
+    outer.classList.add('more');
+
+    const loadAll = addElement(outer, 'div');
+    loadAll.textContent = 'Load all';
+    loadAll.addEventListener('click', async function() {
+      let n = 0;
+      while (n < 1000) {
+        if (!await listMore()) {
+          break;
+        }
+        n += 1;
+      }
+      applyCurrentFilter();
+    });
+
+    const more = addElement(outer, 'div');
+    more.textContent = 'More';
+    more.addEventListener('click', () => {
+      listMore();
+      applyCurrentFilter();
+    });
+
+    const count = addElement(outer, 'div');
+    count.textContent = `${loader.loadedCount}/${loader.total}`;
+    return true;
+  } else {
+    return false;
+  }
+}
+
+function addToList(data) {
+  const list = document.getElementById('list');
+  for (const entry of data) {
+    const outer = addElement(list, 'div');
+    outer.classList.add('both-side-parent');
+    outer.classList.add('entry');
+    outer.setAttribute('entry-id', entry.Id);
+
+    const title = addElement(outer, 'div');
+    title.textContent = entry.Title;
+
+    const date = addElement(outer, 'div');
+    date.textContent = entry.Date.split(' ')[0];
+    date.classList.add('date');
+  }
+}
+
+async function showPage(id, suffix='') {
+  const data = await loader.fetchSingle(id);
+  setTitle(`title${suffix}`, data.Title);
+  setDate(`date${suffix}`, data.Date);
+  setContent(`content${suffix}`, data.Content);
+  setLink(`link${suffix}`, id);
+  if (suffix == '-s') {
+    getElement('document-title').textContent = data.Title;
+  }
+}
+
+const [
+  TYPE_ALL, TYPE_EVENTS, TYPE_NOTICE, TYPE_NEWS,
+] = [ 0, 4, 3, 1 ];
+
+let loader = null;
+
+window.addEventListener('load', async function() {
+  const outer = getElement('outer');
+  const params = new URLSearchParams(document.location.search);
+  const id = params.get('id');
+  if (id) {
+    getElement('body').classList.add('show-overflow');
+    loader = new ListLoader(TYPE_ALL);
+    showPage(id, '-s');
+    showNode(getElement('data-s'), true);
+  } else {
+    showNode(outer, true);
+    const list = document.getElementById('list');
+    list.addEventListener('click', (ev) => {
+      let target = ev.target;
+      if (!target.classList.contains('entry')) {
+        target = target.parentNode;
+      }
+      const id = target.getAttribute('entry-id');
+      if (id) {
+        target.classList.add('clicked');
+        showPage(id);
+      }
+    });
+    const filter = document.getElementById('filter');
+    filter.selectedIndex = 0;
+    filter.addEventListener('change', applyCurrentFilter);
+    loader = new ListLoader(TYPE_ALL);
+    listMore();
+  }
+});
+
+function applyCurrentFilter() {
+  const selector = getElement('filter');
+  const s = selector.selectedOptions[0].textContent;
+  applyFilter(s);
+}
+
+function applyFilter(s) {
+  const list = getElement('list');
+  if (s == 'All') {
+    let node = list.firstElementChild;
+    while (node) {
+      showNode(node, true);
+      node = node.nextElementSibling;
+    }
+  } else {
+    let node = list.firstElementChild;
+    while (node) {
+      const found = node.textContent.indexOf(s) >= 0;
+      showNode(node, found);
+      node = node.nextElementSibling;
+    }
+  }
+}
+
+function setTitle(id, title) {
+  document.getElementById(id).textContent = title;
+}
+
+function setContent(id, content) {
+  const s = content.replaceAll('\u003c', '<').replaceAll('\u003e', '>');
+  document.getElementById(id).innerHTML = s;
+}
+
+function setDate(id, date) {
+  document.getElementById(id).textContent = '发布时间 ' + date.split(' ')[0];
+}
+
+function setLink(id, number) {
+  const base = document.location.href;
+  document.getElementById(id).href = `${base}?id=${number}`;
+}
+
+function showNode(node, state) {
+  if (state) {
+    node.classList.remove('hidden');
+  } else {
+    node.classList.add('hidden');
+  }
+}
+
+function addElement(parent, tag) {
+  const child = document.createElement(tag);
+  parent.appendChild(child);
+  return child;
+}
+
+function getElement(id) {
+  return document.getElementById(id);
+}
+</script>
+
+<div id="outer" class="both-side-parent hidden">
+  <div id="list-outer">
+    <div id="category" style="text-align: end; margin-right: 2.5em; margin-bottom: 1em;">
+      <select id="filter">
+        <option>All</option>
+        <option>新人形情报</option>
+        <option>外观情报</option>
+        <option>外观上新</option>
+        <option>外观复刻</option>
+        <option>新增铭契</option>
+        <option>心智螺旋扩展</option>
+        <option>心智统合</option>
+        <option>技能情报</option>
+        <option>武器情报</option>
+        <option>涂装上新</option>
+        <option>定向采购</option>
+        <option>限时复刻</option>
+        <option>限时活动</option>
+        <option>限时玩法</option>
+        <option>壁纸</option>
+        <option>表情包</option>
+        <option>版本更新公告</option>
+        <option>首领挑战</option>
+        <option>全新功能</option>
+        <option>全新玩法</option>
+        <option>周边活动</option>
+        <option>人形假期生活调查</option>
+        <option>直播预告</option>
+        <option>邮件赠礼</option>
+        <option>新年祝福</option>
+        <option>红包封面发放</option>
+        <option>情人节</option>
+        <option>概率UP</option>
+      </select>
+    </div>
+    <div id="list"></div>
+  </div>
+  <div id="data">
+    <div class="both-side-parent"><div id="title"></div><div style="margin-right: 0.5em;"><a id="link" href="">Link</a></div></div>
+    <div id="date"></div>
+    <div id="content"></div>
+  </div>
+</div>
+
+<div id="data-s" class="hidden">
+  <div class="both-side-parent"><div id="title-s"></div><div style="margin-right: 0.5em;"><a id="link-s" href="">Link</a></div></div>
+  <div id="date-s"></div>
+  <div id="content-s"></div>
+</div>
+</body>
+</html>
