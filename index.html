@@ -232,7 +232,7 @@ function setDate(id, date) {
 }
 
 function setLink(id, number) {
-  const base = document.location.href;
+  const base = document.location.origin + document.location.pathname;
   document.getElementById(id).href = `${base}?id=${number}`;
 }
 
